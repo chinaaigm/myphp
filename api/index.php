@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['url'])) {
                     continue;
                    }
              }
-           if (!empty($h) && strpos($h, 'Transfer-Encoding') === false )
+           if (!empty($h) && strpos($h, 'Transfer-Encoding') === false && strpos($h, 'Connection: close') === false )
             {
                header($h);
             }
