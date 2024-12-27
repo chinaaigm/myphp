@@ -1,45 +1,78 @@
 <?php
-// 定义一个函数用于安全地处理 URL
 function sanitizeUrl($url) {
-    // 首先使用 filter_var 验证 URL 格式
     $filteredUrl = filter_var($url, FILTER_VALIDATE_URL);
 
     if ($filteredUrl === false) {
-        return ''; // 如果验证失败，返回空字符串
+        return '';
     }
-
-    // 进一步检查 URL 的协议，只允许 http 和 https
     $protocol = parse_url($filteredUrl, PHP_URL_SCHEME);
     if ($protocol !== 'http' && $protocol !== 'https') {
-        return ''; // 如果协议不是 http 或 https，返回空字符串
+        return '';
     }
 
-    return $filteredUrl; // 返回过滤后的 URL
+    return $filteredUrl;
 }
 
 $targetUrl = '';
 $output = '';
 $error = '';
 
-// 处理表单提交
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['url'])) {
     $targetUrl = $_POST['url'];
-    $targetUrl = sanitizeUrl($targetUrl);  // 清理用户输入的 URL
+    $targetUrl = sanitizeUrl($targetUrl);
 
     if (empty($targetUrl)) {
         $error = "无效的 URL，请输入有效的 http 或 https URL。";
     } else {
-        $ch = curl_init();
+        // 使用 file_get_contents 发送 GET 请求
+        $contextOptions = array(
+            'http' => array(
+                'method' => 'GET', // 默认是 GET
+                'header' => getHeadersString(), //转发请求头
+                 'ignore_errors' => true, // 不抛出错误
+            )
+         );
 
-        curl_setopt($ch, CURLOPT_URL, $targetUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HEADER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true); // 启用 SSL 验证
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2); // 启用 SSL 验证
-      
-         // 转发请求头
-        $requestHeaders = getallheaders();
+       
+        $context = stream_context_create($contextOptions);
+
+        $response = @file_get_contents($targetUrl, false, $context);
+        
+         if ($response === false) {
+             $error = "file_get_contents 错误：无法获取远程内容";
+
+             $lastError = error_get_last();
+            if (isset($lastError['message'])) {
+                $error .= " - " . $lastError['message'];
+            }
+
+         } else {
+
+        // 获取响应头
+         $headers = getHeadersFromStream($http_response_header);
+            
+        // 发送响应头
+           foreach ($headers as $h) {
+               if (preg_match('/^HTTP\/\d+\.\d+\s+(\d+)/', $h, $match)) {
+                if ($match[1] == 100) {
+                    continue;
+                   }
+             }
+           if (!empty($h) && strpos($h, 'Transfer-Encoding') === false )
+            {
+               header($h);
+            }
+            }
+          
+          $output = $response;
+         }
+    }
+}
+
+
+// 转发请求头函数
+function getHeadersString(){
+    $requestHeaders = getallheaders();
         $forwardHeaders = [];
         foreach ($requestHeaders as $key => $value) {
             if($key != 'Host' && $key != 'Connection' ){
@@ -47,52 +80,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['url'])) {
             }
            
         }
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $forwardHeaders);
-
-
-        // 处理 POST 数据
-        if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
-            $postData = http_build_query($_POST);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
-        }
-
-        $response = curl_exec($ch);
-
-        if ($response === false) {
-          $error = "CURL 错误: " . curl_error($ch);
-         } else {
-        // 获取 HTTP 状态码
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-        // 获取 Header 大小
-         $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-
-         // 获取响应头
-        $header = substr($response, 0, $headerSize);
-
-         // 获取响应内容
-         $body = substr($response, $headerSize);
-            
-         // 发送响应头
-         $headers = explode("\r\n", $header);
-         foreach ($headers as $h) {
-          if (preg_match('/^HTTP\/\d+\.\d+\s+(\d+)/', $h, $match)) {
-             if ($match[1] == 100) {
-                continue;
-              }
-           }
-           if (!empty($h) && strpos($h, 'Transfer-Encoding') === false )
-           {
-            header($h);
-           }
-          }
-            $output = $body;
-        }
-        curl_close($ch);
-    }
+        
+        return implode("\r\n", $forwardHeaders);
 }
-
+// 从stream获取响应头函数
+function getHeadersFromStream($httpResponseHeader){
+        $headers = [];
+        if(is_array($httpResponseHeader)){
+          foreach ($httpResponseHeader as $header){
+             $headers[] = $header;
+          }
+        }
+        return $headers;
+}
 
 ?>
 
