@@ -1,120 +1,32 @@
 <?php
-function sanitizeUrl($url) {
-    $filteredUrl = filter_var($url, FILTER_VALIDATE_URL);
 
-    if ($filteredUrl === false) {
-        return '';
-    }
-    $protocol = parse_url($filteredUrl, PHP_URL_SCHEME);
-    if ($protocol !== 'http' && $protocol !== 'https') {
-        return '';
-    }
+echo "<h1>PHP 探针</h1>";
 
-    return $filteredUrl;
+echo "<p><strong>PHP 版本:</strong> " . phpversion() . "</p>";
+
+echo "<p><strong>服务器 IP 地址:</strong> " . $_SERVER['SERVER_ADDR'] . "</p>";
+echo "<p><strong>服务器名称:</strong> " . $_SERVER['SERVER_NAME'] . "</p>";
+echo "<p><strong>服务器操作系统:</strong> " . php_uname() . "</p>";
+
+echo "<p><strong>已加载的扩展:</strong></p>";
+echo "<ul>";
+foreach (get_loaded_extensions() as $extension) {
+    echo "<li>" . $extension . "</li>";
 }
+echo "</ul>";
 
-$targetUrl = '';
-$output = '';
-$error = '';
+echo "<p><strong>PHP 配置信息:</strong></p>";
+echo "<pre>";
+ob_start();
+phpinfo();
+$phpinfo = ob_get_contents();
+ob_end_clean();
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['url'])) {
-    $targetUrl = $_POST['url'];
-    $targetUrl = sanitizeUrl($targetUrl);
+// 使用正则表达式过滤掉敏感信息，比如密码等
+$phpinfo = preg_replace('/password(.*?)=&nbsp;(.*?)<br \/>/i', 'password$1= ********<br />', $phpinfo);
+$phpinfo = preg_replace('/(sendmail_pw)(.*?)=&nbsp;(.*?)<br \/>/i', '$1$2= ********<br />', $phpinfo);
 
-    if (empty($targetUrl)) {
-        $error = "无效的 URL，请输入有效的 http 或 https URL。";
-    } else {
-        // 使用 file_get_contents 发送 GET 请求
-        $contextOptions = array(
-            'http' => array(
-                'method' => 'GET', // 默认是 GET
-                'header' => getHeadersString(), //转发请求头
-                 'ignore_errors' => true, // 不抛出错误
-            )
-         );
-
-       
-        $context = stream_context_create($contextOptions);
-
-        $response = @file_get_contents($targetUrl, false, $context);
-        
-         if ($response === false) {
-             $error = "file_get_contents 错误：无法获取远程内容";
-
-             $lastError = error_get_last();
-            if (isset($lastError['message'])) {
-                $error .= " - " . $lastError['message'];
-            }
-
-         } else {
-
-        // 获取响应头
-         $headers = getHeadersFromStream($http_response_header);
-            
-        // 发送响应头
-           foreach ($headers as $h) {
-               if (preg_match('/^HTTP\/\d+\.\d+\s+(\d+)/', $h, $match)) {
-                if ($match[1] == 100) {
-                    continue;
-                   }
-             }
-           if (!empty($h) && strpos($h, 'Transfer-Encoding') === false && strpos($h, 'Connection: close') === false )
-            {
-               header($h);
-            }
-            }
-          
-          $output = $response;
-         }
-    }
-}
-
-
-// 转发请求头函数
-function getHeadersString(){
-    $requestHeaders = getallheaders();
-        $forwardHeaders = [];
-        foreach ($requestHeaders as $key => $value) {
-            if($key != 'Host' && $key != 'Connection' ){
-               $forwardHeaders[] = "$key: $value";
-            }
-           
-        }
-        
-        return implode("\r\n", $forwardHeaders);
-}
-// 从stream获取响应头函数
-function getHeadersFromStream($httpResponseHeader){
-        $headers = [];
-        if(is_array($httpResponseHeader)){
-          foreach ($httpResponseHeader as $header){
-             $headers[] = $header;
-          }
-        }
-        return $headers;
-}
+echo $phpinfo;
+echo "</pre>";
 
 ?>
-
-<!DOCTYPE html>
-<html>
-<head>
-    <title>简单代理</title>
-</head>
-<body>
-    <h1>代理网站</h1>
-    <?php if ($error): ?>
-        <p style="color: red;"><?php echo htmlspecialchars($error); ?></p>
-    <?php endif; ?>
-    <form method="post">
-        <label for="url">请输入 URL：</label>
-        <input type="text" name="url" id="url" value="<?php echo htmlspecialchars($targetUrl); ?>" size="50">
-        <button type="submit">访问</button>
-    </form>
-
-    <?php if ($output): ?>
-        <hr>
-        <?php echo $output; ?>
-    <?php endif; ?>
-</body>
-</html>
